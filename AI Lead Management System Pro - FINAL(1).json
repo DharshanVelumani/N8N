@@ -1,0 +1,574 @@
+{
+  "name": "AI Lead Management System Pro - FINAL",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ae752d6e-4a96-46c7-bccc-0cd9959ad412",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        0
+      ],
+      "webhookId": "0aca2acb-18c9-467c-a01a-0b4479579e56"
+    },
+    {
+      "parameters": {
+        "jsCode": "// FIXED VALIDATION\nconst inputData = $json.body || $json;\nconst requiredFields = ['name', 'email', 'requirement', 'budget'];\nconst errors = [];\nconst sanitized = {};\n\nfor (const field of requiredFields) {\n  if (!inputData[field] || String(inputData[field]).trim() === '') {\n    errors.push(field);\n  }\n}\n\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (inputData.email && !emailRegex.test(String(inputData.email).trim())) {\n  errors.push('email_invalid');\n}\n\nif (errors.length > 0) {\n  return { json: { valid: false, errors, message: `Validation failed: ${errors.join(', ')}` } };\n}\n\nsanitized.name = String(inputData.name).trim();\nsanitized.email = String(inputData.email).trim().toLowerCase();\nsanitized.requirement = String(inputData.requirement).trim();\nsanitized.budget = String(inputData.budget).trim();\nsanitized.phone = inputData.phone || null;\nsanitized.company = inputData.company || null;\nsanitized.source = inputData.source || 'direct';\nsanitized.received_at = new Date().toISOString();\nsanitized.lead_id = `LEAD-${Date.now()}-${Math.random().toString(36).substring(2,9).toUpperCase()}`;\n\nreturn { json: { valid: true, data: sanitized } };"
+      },
+      "id": "0dc6beb7-c959-4b2e-b7a3-24b8204b3245",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "16dd0cb9-4d13-4244-97d8-5b6b58ae90f0",
+      "name": "Validation Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success:false, error:$json.message, fields:$json.errors } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "c22a1388-57e1-403f-ac3f-a8878e6d493f",
+      "name": "Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        112,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "98b10eb1-9c08-4325-b938-bcb73807318a",
+      "name": "Set Lead Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        128,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $items(\"Set Lead Data\")[0].json.data;\n\ntry {\n\nlet content = $json.response || \"\";\ncontent = content.replace(/```json/g,'').replace(/```/g,'').trim();\n\nconst ai = JSON.parse(content);\n\nreturn {\njson:{\nsuccess:true,\nlead_data:{\n...original,\ncategory: ai.category || \"General\",\nurgency: ai.urgency || \"Medium\",\nlead_score: ai.lead_score || 50\n}\n}\n};\n\n} catch(e){\n\nreturn {\njson:{\nsuccess:false,\nlead_data: original\n}\n};\n\n}"
+      },
+      "id": "d35599cb-7cc2-4cb4-850d-3e6caa758716",
+      "name": "Parse AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "37550b78-87d4-49e8-b565-8d17cbd6c8fe",
+      "name": "AI Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        720,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $items(\"Set Lead Data\")[0].json.data || {};\n\nlet score = 50;\n\nif (data.budget && parseInt(data.budget) > 15000) {\n  score = 80;\n}\n\nreturn {\n  json: {\n    lead_data: {\n      ...data,\n      category: \"Web Development\",\n      urgency: \"Medium\",\n      lead_score: score,\n      next_action: \"Follow up within 24 hours\"\n    }\n  }\n};"
+      },
+      "id": "1caa8951-a147-43b2-80d1-75e33cce99b7",
+      "name": "Fallback Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success:true, data:$json.lead_data } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e4f28fdf-95d6-4341-9f11-e2c18147bb53",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1936,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "dharshanvelumani@gmail.com",
+        "subject": "=={{$json.lead_data.name}}",
+        "message": "=<div style=\"font-family: Arial, Helvetica, sans-serif; background:#f4f6fb; padding:30px;\">\n\n  <div style=\"max-width:650px; margin:auto; background:white; border-radius:8px; padding:30px; box-shadow:0 2px 8px rgba(0,0,0,0.08);\">\n\n    <h2 style=\"color:#4f46e5; text-align:center; margin-top:0;\">\n      🚀 New Lead Received\n    </h2>\n\n    <p style=\"text-align:center; color:#555;\">\n      A new client inquiry has been submitted through the AI Lead Management System.\n    </p>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3 style=\"margin-bottom:10px;\">👤 Client Information</h3>\n\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold; width:180px;\">Name</td>\n        <td>{{$json.lead_data.name}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Email</td>\n        <td>{{$json.lead_data.email}}</td>\n      </tr>\n    </table>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3>📌 Project Requirement</h3>\n    <p style=\"background:#f9fafc; padding:12px; border-radius:6px;\">\n      {{$json.lead_data.requirement}}\n    </p>\n\n    <h3>💰 Budget Information</h3>\n\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold; width:180px;\">Budget Allocation</td>\n        <td>$ {{$json.lead_data.budget}}</td>\n      </tr>\n    </table>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3>🤖 AI Lead Analysis</h3>\n\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Category</td>\n        <td>{{$json.lead_data.category}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Urgency Level</td>\n        <td>{{$json.lead_data.urgency}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Lead Score</td>\n        <td>{{$json.lead_data.lead_score}} / 100</td>\n      </tr>\n    </table>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3>⚡ Next Action</h3>\n\n    <p>\n      Review the lead and contact the client if the opportunity aligns with business objectives.\n    </p>\n\n  </div>\n\n  <p style=\"text-align:center; font-size:12px; color:#888; margin-top:15px;\">\n    This notification was generated automatically by the AI Lead Management System powered by n8n.\n  </p>\n\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        -240
+      ],
+      "id": "4464ee5b-d461-483d-b693-50bbe3c89b21",
+      "name": "Admin",
+      "webhookId": "6a56bf3b-4d0c-435a-a1cd-099d482b7ba8",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "SxEGcOUmoRhAR8MU",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$json.lead_data.email}}",
+        "subject": "Thank you for contacting us.",
+        "message": "=<div style=\"font-family: Arial, Helvetica, sans-serif; background:#f4f6fb; padding:30px;\">\n  \n  <div style=\"max-width:600px; margin:auto; background:white; border-radius:8px; padding:30px; box-shadow:0 2px 8px rgba(0,0,0,0.08);\">\n    \n    <h2 style=\"color:#4f46e5; text-align:center; margin-top:0;\">\n      Thank You for Contacting Us\n    </h2>\n\n    <p>Hello <strong>{{$json.lead_data.name}}</strong>,</p>\n\n    <p>\n      Thank you for reaching out to us. We appreciate your interest in our services.\n      Your request has been successfully received, and our team is currently reviewing\n      the details you provided.\n    </p>\n\n    <p>\n      One of our specialists will contact you shortly to discuss the next steps.\n    </p>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3 style=\"color:#333; margin-bottom:10px;\">📌 Your Request Details</h3>\n\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold; width:150px;\">Requirement</td>\n        <td style=\"padding:8px 0;\">{{$json.lead_data.requirement}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Budget</td>\n        <td style=\"padding:8px 0;\">{{$json.lead_data.budget}}</td>\n      </tr>\n    </table>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <p>\n      If you have any additional information you would like to share,\n      please feel free to reply to this email.\n    </p>\n\n    <p style=\"margin-top:25px;\">\n      Best regards,<br>\n      <strong>Customer Success Team</strong><br>\n      Your Company\n    </p>\n\n  </div>\n\n  <p style=\"text-align:center; font-size:12px; color:#888; margin-top:15px;\">\n    This email was generated automatically by our AI Lead Management System.\n  </p>\n\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1392,
+        80
+      ],
+      "id": "b62c5366-4bc7-4077-ad72-6bcec74badc5",
+      "name": "Client",
+      "webhookId": "0c6f6fb9-28d2-4e69-b46e-9f1717f13b88",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "SxEGcOUmoRhAR8MU",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1tmQdNhz_Po56cOrnW5YWFZ1wo1XnQf-XHV0b79GSlYo",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tmQdNhz_Po56cOrnW5YWFZ1wo1XnQf-XHV0b79GSlYo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Lead ID": "==\"LEAD-\"&TEXT(ROW()-1,\"000\")",
+            "Name": "={{$json.lead_data.name}}",
+            "Email": "={{$json.lead_data.email}}",
+            "Category": "={{$json.lead_data.category}}",
+            "Urgency": "={{$json.lead_data.urgency}}",
+            "Score": "={{$json.lead_data.lead_score}}",
+            "Budget": "={{$json.lead_data.budget}}",
+            "Date": "={{$json.lead_data.received_at}}"
+          },
+          "matchingColumns": [
+            "Lead ID"
+          ],
+          "schema": [
+            {
+              "id": "Lead ID",
+              "displayName": "Lead ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Urgency",
+              "displayName": "Urgency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1392,
+        336
+      ],
+      "id": "f94aa666-6c7c-4b1e-b138-1e1a24e46177",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "nb0gsogfAtBAwMym",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "listId": "69a85e27aeb529ec5a12744f",
+        "name": "={{$json.lead_data.name}}",
+        "description": "=Email: {{$json.lead_data.email}}  Requirement: {{$json.lead_data.requirement}}  Budget: {{$json.lead_data.budget}}  Lead Score: {{$json.lead_data.lead_score}}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        608
+      ],
+      "id": "87997bd9-6428-4607-8c5a-8e4e7e23b0a2",
+      "name": "Create a card",
+      "credentials": {
+        "trelloApi": {
+          "id": "xRGRmRTQmcZPWkE2",
+          "name": "Trello account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3\",\n  \"prompt\": \"You are an AI CRM assistant. Classify this lead and return ONLY JSON.\\n\\nName: {{$json.data.name}}\\nRequirement: {{$json.data.requirement}}\\nBudget: {{$json.data.budget}}\\n\\nReturn format:\\n{\\n\\\"category\\\":\\\"\\\",\\n\\\"urgency\\\":\\\"\\\",\\n\\\"lead_score\\\":0\\n}\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        0
+      ],
+      "id": "e270a144-cd21-4d12-9668-66894f9ed460",
+      "name": "AI"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$json.lead_data.email}}",
+        "subject": "Thank you for contacting us.",
+        "message": "=<div style=\"font-family: Arial, Helvetica, sans-serif; background:#f4f6fb; padding:30px;\">\n\n  <div style=\"max-width:650px; margin:auto; background:white; border-radius:8px; padding:30px; box-shadow:0 2px 8px rgba(0,0,0,0.08);\">\n\n    <h2 style=\"color:#e11d48; text-align:center; margin-top:0;\">\n      ⚠️ Issue With Your Request Submission\n    </h2>\n\n    <p>Hello <strong>{{$json.name || \"Client\"}}</strong>,</p>\n\n    <p>\n      Thank you for reaching out to us.\n      Unfortunately, we were unable to process your request because some required\n      information was missing or invalid.\n    </p>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3>📌 Submission Details</h3>\n\n    <table style=\"width:100%; border-collapse:collapse;\">\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold; width:180px;\">Name</td>\n        <td>{{$json.name || \"Not Provided\"}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Email</td>\n        <td>{{$json.email || \"Not Provided\"}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Requirement</td>\n        <td>{{$json.requirement || \"Not Provided\"}}</td>\n      </tr>\n      <tr>\n        <td style=\"padding:8px 0; font-weight:bold;\">Budget</td>\n        <td>{{$json.budget || \"Not Provided\"}}</td>\n      </tr>\n    </table>\n\n    <hr style=\"border:none; border-top:1px solid #eee; margin:25px 0;\">\n\n    <h3 style=\"color:#e11d48;\">⚠️ Problem Detected</h3>\n\n    <p>\n      One or more fields in the submission did not pass our validation checks.\n      Please review your information and submit the form again with complete and\n      accurate details.\n    </p>\n\n    <p>\n      If you continue experiencing issues, please contact our support team.\n    </p>\n\n    <p style=\"margin-top:25px;\">\n      Best regards,<br>\n      <strong>Customer Support Team</strong><br>\n      Your Company\n    </p>\n\n  </div>\n\n  <p style=\"text-align:center; font-size:12px; color:#888; margin-top:15px;\">\n    This email was generated automatically by our AI Lead Management System.\n  </p>\n\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        864
+      ],
+      "id": "cb35fa81-36ad-47b1-a24a-5b0cb77d91af",
+      "name": "Client E",
+      "webhookId": "0c6f6fb9-28d2-4e69-b46e-9f1717f13b88",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "SxEGcOUmoRhAR8MU",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Validation Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Check": {
+      "main": [
+        [
+          {
+            "node": "Set Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Lead Data": {
+      "main": [
+        [
+          {
+            "node": "AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI": {
+      "main": [
+        [
+          {
+            "node": "AI Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Success?": {
+      "main": [
+        [
+          {
+            "node": "Admin",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Client",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create a card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Logic": {
+      "main": [
+        [
+          {
+            "node": "Client E",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Admin": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        []
+      ]
+    },
+    "Append row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a card": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI": {
+      "main": [
+        [
+          {
+            "node": "Parse AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "bc41c61d-af68-4dd8-8969-ca756fbcb1f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7f33f80e24d4791858269b92ae592b416aa1e4815dc0f910e01bc4c147b02d63"
+  },
+  "id": "bBqsxPi05QjeoWnf",
+  "tags": []
+}
